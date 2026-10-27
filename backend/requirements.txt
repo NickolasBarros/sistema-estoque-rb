@@ -1,0 +1,7 @@
+# Lista de ferramentas Python que o projeto precisa
+# Flask = servidor web que cria a API
+# flask-cors = permite que o site converse com a API
+# pytest = robô que roda os testes automáticos
+Flask==3.0.0
+flask-cors==4.0.0
+pytest==7.4.3
