@@ -1,67 +1,82 @@
-# ============================================================
-# ARQUIVO: routes.py
-# O QUE FAZ: define as "portas" (rotas) da API.
-# Cada @bp.xxx é um tipo de pedido que o site pode fazer:
-#   GET    = pedir informação
-#   POST   = criar algo novo
-#   DELETE = apagar algo
-# ============================================================
+"""Endpoints HTTP do sistema de estoque."""
 
-# Blueprint = caderno de rotas
-# request = pega dados que o site enviou
-# jsonify = transforma resposta em JSON
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 
-# Importa o serviço (o gerente)
 from services.estoque_service import EstoqueService
 
-# Cria o caderno de rotas
 bp = Blueprint("api", __name__)
-
-# Instância única do serviço (usada em todas as rotas)
-service = EstoqueService()
+# Dados fictícios permitem explorar o painel logo ao iniciar a demonstração.
+service = EstoqueService(carregar_exemplos=True)
 
 
 @bp.post("/itens")
 def inserir():
-    """POST /api/itens → insere um novo produto."""
-    # Pega o JSON que o site enviou
-    d = request.json
-
-    # Chama o serviço passando os campos
-    return jsonify(service.inserir_item(
-        d["sku"], d["nome"], d["categoria"], d["unidade_medida"],
-        d["quantidade"], d.get("estoque_minimo", 0)
-    )), 201
+    """Cadastra um produto ou registra uma entrada para SKU existente."""
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie os dados do produto em formato JSON."}), 400
+    try:
+        produto = service.inserir_item(
+            dados.get("sku"),
+            dados.get("nome"),
+            dados.get("categoria"),
+            dados.get("unidade_medida"),
+            dados.get("quantidade"),
+            dados.get("estoque_minimo", 0),
+        )
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+    return jsonify(produto), 201
 
 
 @bp.delete("/itens/<sku>")
 def remover(sku):
-    """DELETE /api/itens/{sku} → remove ou decrementa."""
-    # Pega 'quantidade' da URL (opcional)
-    qtd = request.args.get("quantidade", type=int)
-    return jsonify(service.remover_item(sku, qtd))
+    """Registra uma saída ou remove todo o saldo se não houver quantidade."""
+    quantidade = request.args.get("quantidade")
+    try:
+        qtd = int(quantidade) if quantidade is not None else None
+    except ValueError:
+        return jsonify({"erro": "Quantidade deve ser um número inteiro."}), 400
+    try:
+        resultado = service.remover_item(sku, qtd)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+    if "erro" in resultado:
+        return jsonify(resultado), 404
+    return jsonify(resultado)
 
 
 @bp.get("/itens/<sku>")
 def consultar(sku):
-    """GET /api/itens/{sku} → consulta disponibilidade."""
-    r = service.consultar(sku)
-    if r:
-        return jsonify(r)
-    return {"erro": "não encontrado"}, 404
+    """Consulta um produto pelo SKU."""
+    produto = service.consultar(sku)
+    if produto:
+        return jsonify(produto)
+    return jsonify({"erro": "SKU não encontrado."}), 404
+
+
+@bp.get("/itens")
+def listar_itens():
+    """Lista todos os produtos em ordem de SKU."""
+    return jsonify(service.listar_itens())
+
+
+@bp.get("/resumo")
+def resumo():
+    """Fornece os indicadores do painel de estoque."""
+    return jsonify(service.resumo())
 
 
 @bp.get("/movimentacoes")
 def movs():
-    """GET /api/movimentacoes?inicio&fim → relatório."""
-    ini = request.args.get("inicio", "0000")
+    """Lista movimentações; aceita limites ISO em inicio e fim."""
+    inicio = request.args.get("inicio", "0000")
     fim = request.args.get("fim", "9999")
-    return jsonify(service.relatorio_movimentacoes(ini, fim))
+    return jsonify(service.relatorio_movimentacoes(inicio, fim))
 
 
 @bp.get("/arvore/validar")
 def validar():
-    """GET /api/arvore/validar → confere as regras RB."""
-    ok, msg = service.validar_arvore()
-    return jsonify({"valida": ok, "mensagem": msg})
+    """Confere se a árvore respeita as propriedades rubro-negras."""
+    ok, mensagem = service.validar_arvore()
+    return jsonify({"valida": ok, "mensagem": mensagem})

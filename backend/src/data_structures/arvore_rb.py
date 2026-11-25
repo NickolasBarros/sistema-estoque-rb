@@ -145,6 +145,20 @@ class ArvoreRB:
                 x = x.dir
         return x if x is not self.nil else None
 
+    def valores_em_ordem(self):
+        """Retorna os valores ordenados pelas chaves da árvore."""
+        valores = []
+
+        def percorrer(no):
+            if no is self.nil:
+                return
+            percorrer(no.esq)
+            valores.append(no.valor)
+            percorrer(no.dir)
+
+        percorrer(self.raiz)
+        return valores
+
     # ---------- REMOÇÃO ----------
     def _transplante(self, u, v):
         if u.pai is self.nil:
